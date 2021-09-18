@@ -1,10 +1,10 @@
 integer lmChannel = -8888;
 float fGravity=0.3;
-float fLife=1;
+float fLife=1.0;
 float fMinSpeed = 0.005;
 float fMaxSpeed = 0.005;
-float fSizeX=0.1;
-float fSizeY=0.1;
+float fSizeX=0.07;
+float fSizeY=0.07;
 float fRed=1.0;
 float fGreen=1.0;
 float fBlue=1.0;
