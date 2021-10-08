@@ -1,10 +1,10 @@
 integer lmChannel = -8888;
 float fGravity=0.3;
-float fLife=1.0;
+float fLife=1;
 float fMinSpeed = 0.005;
 float fMaxSpeed = 0.005;
-float fSizeX=0.07;
-float fSizeY=0.07;
+float fSizeX=0.1;
+float fSizeY=0.1;
 float fRed=1.0;
 float fGreen=1.0;
 float fBlue=1.0;
@@ -28,28 +28,6 @@ list    gCommandQueue;    //3-strided list: [cmdId, avatarKey, commandParamsStri
 list    paramsList;
 integer STRIDE = 9;
 integer index;
-
-query_set_config(key avatarKey, list items) {
-    integer i;
-    integer stop = llGetListLength(items);
-    for (i=0; i<stop; ++i) {
-        list line = llParseString2List(llList2String(items, i), ["="], []);
-        string item = llList2String(line, 0);
-        if (llGetInventoryType(llList2String(line, 1)) == 0) {
-            kTexture = llGetInventoryKey(llList2String(line, 1));
-         }
-        else if ((key)llList2String(line, 1)) {
-            kTexture =(key)llList2String(line, 1);
-        }
-        else if(llToLower(item) == "xsize")   fSizeX   = (float)llList2String(line, 1);
-        else if(llToLower(item) == "ysize")   fSizeY   = (float)llList2String(line, 1);
-        else if(llToLower(item) == "gravity") fGravity = (float)llList2String(line, 1);
-        else if(llToLower(item) == "life")    fLife    = (float)llList2String(line, 1);
-        else if(llToLower(item) == "red")     fRed     = (float)llList2String(line, 1);
-        else if(llToLower(item) == "green")   fGreen   = (float)llList2String(line, 1);
-        else if(llToLower(item) == "blue")    fBlue    = (float)llList2String(line, 1);
-    }
-}
 
 query_config(key avatarKey, list items) {
     integer i;
@@ -75,23 +53,29 @@ query_config(key avatarKey, list items) {
     string item = llList2String(line, 0);
     if (llToLower(item) == "sender") {
         list senders = llCSV2List(llList2String(line, 1));
-        if (llToLower(llList2String(senders, 0)) == "clear") {
+        if (llToLower(llList2String(senders, 0)) == "clear" || llList2String(senders, 0) == "*") { //clear the paramsList, effectively using the global default values in this script.
             paramsList = [];
+            
             index = 0;
-            return;
-        }
-        else if(llToLower(llList2String(senders, 0)) == "change_defaults") {
-            query_set_config(avatarKey, items);
-            return;
         }
         integer stop = llGetListLength(senders);
         integer n;
         for (n=0; n<stop; ++n) {
-            if (llListFindList(gPrimIDs, [llList2String(senders, n)]) > -1) {
-                paramsList += [llList2String(senders, n), kTexture, fSizeX, fSizeY,fGravity, fLife, fRed, fGreen, fBlue];
+            if (llListFindList(gPrimIDs, [llList2String(senders, n)]) > -1 || llList2String(senders, n) == "*") {
+                //these will be cleared using the clear command above.
+                paramsList += [
+                llList2String(senders, n), 
+                kTexture, 
+                fSizeX, 
+                fSizeY, 
+                fGravity, 
+                fLife, 
+                fRed, 
+                fGreen, 
+                fBlue
+                ];
             }
         }
-//        llOwnerSay("before, paramslist:\n\n" + llList2CSV(paramsList));
         senders = [];
         items = llDeleteSubList(items, 0,0);
         //Step thru all the sender names in the paramsList and finish populating the params in the list
@@ -143,8 +127,10 @@ SetParticles(integer linkNum) {
     float Green = fGreen;
     float Blue = fBlue;
     integer index = llListFindList(paramsList, [llList2String(llGetLinkPrimitiveParams(linkNum, [PRIM_DESC]),0)]);
-    if (index > -1) {
-//    llOwnerSay("in setparticles, " + llList2String(llGetLinkPrimitiveParams(linkNum, [PRIM_DESC]),0) + ",\n paramsList:\n" + llList2CSV(paramsList));
+    if ((index > -1) || (index == -1 && llListFindList(paramsList, ["*"]) > -1))  {
+        if (index > -1) {}
+        else if (llListFindList(paramsList, ["*"]) > -1) {index = llListFindList(paramsList, ["*"]);}
+        
         if ((string)llList2Key(paramsList, index + 1) != "") Texture = llList2Key(paramsList, index + 1);
         if ((string)llList2Float(paramsList, index + 2) != "") SizeX = llList2Float(paramsList, index + 2);
         if ((string)llList2Float(paramsList, index + 3) != "") SizeY = llList2Float(paramsList, index + 3);
@@ -158,7 +144,6 @@ SetParticles(integer linkNum) {
     integer nBitField = PSYS_PART_TARGET_POS_MASK|PSYS_PART_FOLLOW_VELOCITY_MASK;
     llLinkParticleSystem(linkNum, []);
     if(fGravity == 0) nBitField = nBitField|PSYS_PART_TARGET_LINEAR_MASK;
-//llOwnerSay("index: " + (string)index + ", sender: " + llList2String(llGetLinkPrimitiveParams(linkNum, [PRIM_DESC]),0) + "\nparams: " + llList2CSV([Texture,SizeX,SizeY,Gravity,Life,Red,Green,Blue]) + "\n");
     llLinkParticleSystem(linkNum,
     [ 
         PSYS_PART_MAX_AGE, fLife, 
@@ -289,13 +274,8 @@ default {
         }
     }
 
-    changed(integer change) {
-        if(change & CHANGED_LINK) {
-//           llResetScript();
-        }
-    }
-
     on_rez(integer params) {
         llResetScript();
     }
 }
+
