@@ -24,12 +24,13 @@ integer gCMD_CONFIG     = 2734; // cmdId, config in msg
 // --- global variables ---
 list    gPrimIDs;         // description => linkId
 integer gListenLMHandle;  // storing lockguard listening handle
+integer gListenLMHandle1;  // storing lockguard listening handle
 list    gCommandQueue;    //3-strided list: [cmdId, avatarKey, commandParamsString]
 list    paramsList;
 integer STRIDE = 9;
 integer index;
 
-query_config(key avatarKey, list items) {
+query_config(list items) {
     integer i;
     //first need to process the first item which will be SENDERS (the linked prims where particles originate)
     //Make a list to hold SENDER and params
@@ -49,10 +50,9 @@ query_config(key avatarKey, list items) {
     ]
     */
     list line = llParseString2List(llList2String(items, i), ["="], []);
-    list senders = llCSV2List(llList2String(line, 1));
+    list senders = llParseString2List(llList2String(line, 1), [",", ", "], []);
     string item = llList2String(line, 0);
     if (llToLower(item) == "sender") {
-        list senders = llCSV2List(llList2String(line, 1));
         if (llToLower(llList2String(senders, 0)) == "clear" || llList2String(senders, 0) == "*") { //clear the paramsList, effectively using the global default values in this script.
             paramsList = [];
             
@@ -170,7 +170,7 @@ SetParticles(integer linkNum) {
     ]);
 }
 
-query_set_chains(key avatarKey, list items) {
+query_set_chains(list items) {
     integer itemLength = llGetListLength(items);
     integer i;
     for(i=0; i < itemLength; i+=2) {
@@ -182,7 +182,7 @@ query_set_chains(key avatarKey, list items) {
             I_Am_Sender = 1;
         }
         
-        string targetDesc    = llList2String(items, i + 1);
+        string targetDesc    = llStringTrim(llList2String(items, i + 1), STRING_TRIM);
         integer targetIndex = llListFindList(gPrimIDs, [targetDesc]);
         key validTargetKey = (key)llList2String(gPrimIDs, targetIndex + 2);
         if(validTargetKey) {
@@ -190,23 +190,18 @@ query_set_chains(key avatarKey, list items) {
             if(!I_Am_Dest) I_Am_Dest = 1;
             llSleep(1);
             string sendText = senderDesc + "," + llList2String(gPrimIDs, targetIndex + 2);
-            llWhisper(lmChannel, senderDesc + "," + llList2String(gPrimIDs, targetIndex + 2));
+            llWhisper(-8888, sendText);
         }
     }
 }
 
 query_rem_chains(list items) {
-    if(I_Am_Sender) {
-        integer itemLength = llGetListLength(items);
-        integer i;
-        for(i=0; i < itemLength; ++i) {
-            integer xLength = llGetListLength(gPrimIDs);
-            integer x;
-            for(x=0; x < xLength; ++x) {
-                if(llList2String(items, i) == llList2String(gPrimIDs, x)) {
-                    llLinkParticleSystem((integer)llList2String(gPrimIDs, x+1) , []);
-                }
-            }
+    integer itemLength = llGetListLength(items);
+    integer i;
+    for(i=0; i < itemLength; ++i) {
+        integer primIDsIndex = llListFindList(gPrimIDs, [llList2String(items, i)]);
+        if(primIDsIndex != -1) {
+            llLinkParticleSystem((integer)llList2String(gPrimIDs, primIDsIndex + 1) , []);
         }
     }
 }
@@ -214,23 +209,17 @@ query_rem_chains(list items) {
 executeCommands() {
     while(llGetListLength(gCommandQueue)) {
         integer commandId=llList2Integer(gCommandQueue, 0);
-        key avatarKey=llList2Key(gCommandQueue, 1);
-        list params;
+        list params=llParseStringKeepNulls(llList2String(gCommandQueue, 2), [",",", "], []);
         if( commandId == gCMD_REM_CHAINS ) {
-            params=llParseStringKeepNulls(llList2String(gCommandQueue, 2), [gSET_SEPARATOR], []);
             query_rem_chains(params);
-            gCommandQueue=llDeleteSubList(gCommandQueue, 0, 2);
         }
         else if(commandId == gCMD_SET_CHAINS) {
-            params=llParseStringKeepNulls(llList2String(gCommandQueue, 2), ["~"], []);
-            query_set_chains(avatarKey, params);
-            gCommandQueue=llDeleteSubList(gCommandQueue, 0, 2);
+            query_set_chains(params);
         }
         else if(commandId == gCMD_CONFIG) {
-            params=llParseStringKeepNulls(llList2String(gCommandQueue, 2), [gSET_SEPARATOR], []);
-            query_config(avatarKey, params);
-            gCommandQueue=llDeleteSubList(gCommandQueue, 0, 2);
+            query_config(params);
         }
+        gCommandQueue=llDeleteSubList(gCommandQueue, 0, 2);
     }
 }
 
@@ -254,6 +243,7 @@ default {
         lmChannel = (integer)("0x7F" + llGetSubString((string)MyParentId, 0, 5));
         if(MyParentId == llGetOwner()) lmChannel = (integer)("0x7F" + llGetSubString((string)llGetKey(), 0, 5));
         gListenLMHandle = llListen(lmChannel, "", NULL_KEY, "");
+        gListenLMHandle1 = llListen(-8888, "", NULL_KEY, "");
     }
 
     link_message(integer sender, integer num, string str, key id) {
@@ -263,14 +253,24 @@ default {
         }
     }
 
-    listen(integer channel, string cuffName, key cuffKey, string message) {
-        list temp = llCSV2List(message);
+    listen(integer channel, string name, key id, string message) {
+        list temp = llParseString2List(message, [",", ", "], []);
         string senderCheck = llList2String(temp, 0);
         key destination = (key)llList2String(temp, 1);
-        if(channel == lmChannel && I_Am_Sender == 1 && llListFindList(gPrimIDs, [senderCheck]) != -1) {
-            integer IDIndex = llListFindList(gPrimIDs, [senderCheck]) + 1;
-            kTarget = destination;
-            SetParticles(llList2Integer(gPrimIDs, IDIndex));
+        if(channel == -8888 || channel == lmChannel) {
+            if (llListFindList(gPrimIDs, [senderCheck]) != -1) {
+                integer IDIndex = llListFindList(gPrimIDs, [senderCheck]) + 1;
+                kTarget = destination;
+                SetParticles(llList2Integer(gPrimIDs, IDIndex));
+            }
+            else {
+                integer numm = (integer)llList2String(temp, 0);
+                temp = llDeleteSubList(temp, 0,0); // remove the command number from the message
+                if(numm == gCMD_REM_CHAINS || numm == gCMD_SET_CHAINS || numm == gCMD_CONFIG) {
+                    gCommandQueue+=[numm, id, llDumpList2String(temp, ",")];
+                    executeCommands();
+                }
+            }
         }
     }
 
