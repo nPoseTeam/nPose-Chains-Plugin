@@ -179,6 +179,194 @@ query_set_chains(list items) {
         integer senderIndex  = llListFindList(gPrimIDs, [senderDesc]);
         key validSenderKey = (key)llList2String(gPrimIDs, senderIndex + 2);
         if(validSenderKey) {              //True if we have a key so we've found the sender of the chains so set a flag variable.
+integer lmChannel = -8888;
+float fGravity=0.3;
+float fLife=1;
+float fMinSpeed = 0.005;
+float fMaxSpeed = 0.005;
+float fSizeX=0.1;
+float fSizeY=0.1;
+float fRed=1.0;
+float fGreen=1.0;
+float fBlue=1.0;
+
+integer I_Am_Sender;
+integer I_Am_Dest;
+
+key kTarget;
+key kTexture = "245ea72d-bc79-fee3-a802-8e73c0f09473";
+string  gSET_MAIN_SEPARATOR            = "|"; // separator from linkmessage
+string  gSET_SEPARATOR                = "~"; // separator from linkmessage
+integer gPLUGIN_COMMAND_REGISTER    = 310;
+
+integer gCMD_SET_CHAINS = 2732; // cmdId, set chains in msg
+integer gCMD_REM_CHAINS = 2733; // cmdId, remove all chains
+integer gCMD_CONFIG     = 2734; // cmdId, config in msg
+// --- global variables ---
+list    gPrimIDs;         // description => linkId
+integer gListenLMHandle;  // storing lockguard listening handle
+integer gListenLMHandle1;  // storing lockguard listening handle
+list    gCommandQueue;    //3-strided list: [cmdId, avatarKey, commandParamsString]
+list    paramsList;
+integer STRIDE = 9;
+integer index;
+
+query_config(list items) {
+    integer i;
+    //first need to process the first item which will be SENDERS (the linked prims where particles originate)
+    //Make a list to hold SENDER and params
+    /*
+    stride = 9
+    paramsList =
+    [
+        param 0 = SENDER,
+        param 1 = texture,
+        param 2 = xsize,
+        param 3 = ysize
+        param 4 = gravity,
+        param 5 = life,
+        param 6 = red,
+        param 7 = green,
+        param 8 = blue
+    ]
+    */
+    list line = llParseString2List(llList2String(items, i), ["="], []);
+    list senders = llParseString2List(llList2String(line, 1), [",", ", "], []);
+    string item = llList2String(line, 0);
+    if (llToLower(item) == "sender") {
+        if (llToLower(llList2String(senders, 0)) == "clear" || llList2String(senders, 0) == "*") { //clear the paramsList, effectively using the global default values in this script.
+            paramsList = [];
+            
+            index = 0;
+        }
+        integer stop = llGetListLength(senders);
+        integer n;
+        for (n=0; n<stop; ++n) {
+            if (llListFindList(gPrimIDs, [llList2String(senders, n)]) > -1 || llList2String(senders, n) == "*") {
+                //these will be cleared using the clear command above.
+                paramsList += [
+                llList2String(senders, n), 
+                kTexture, 
+                fSizeX, 
+                fSizeY, 
+                fGravity, 
+                fLife, 
+                fRed, 
+                fGreen, 
+                fBlue
+                ];
+            }
+        }
+        senders = [];
+        items = llDeleteSubList(items, 0,0);
+        //Step thru all the sender names in the paramsList and finish populating the params in the list
+        integer paramsLength = llGetListLength(paramsList)/STRIDE;
+        for (index=index; index<paramsLength; ++index) {
+            integer length = llGetListLength(items);
+            for(i=0; i < length; ++i) {
+                line = llParseString2List(llList2String(items, i), ["="], []);
+                string item = llList2String(line, 0);
+                string textureThisOne = llList2String(line, 1);
+                if (llGetInventoryType(textureThisOne) == 0) {
+                    paramsList = llListReplaceList(paramsList, [llGetInventoryKey(llList2String(line, 1))], (index*9)+1, (index*9)+1);
+                }
+                else if ((key)textureThisOne) {
+                    paramsList = llListReplaceList(paramsList, [(key)llList2String(line, 1)], (index*9)+1, (index*9)+1);
+                }
+                else if (item == "xsize") {
+                    paramsList = llListReplaceList(paramsList, [(float)llList2String(line, 1)], (index*9)+2, (index*9)+2);
+                }
+                else if (item == "ysize") {
+                    paramsList = llListReplaceList(paramsList, [(float)llList2String(line, 1)], (index*9)+3, (index*9)+3);
+                }
+                else if (item == "gravity") {
+                    paramsList = llListReplaceList(paramsList, [(float)llList2String(line, 1)], (index*9)+4, (index*9)+4);
+                }
+                else if (item == "life") {
+                    paramsList = llListReplaceList(paramsList, [(float)llList2String(line, 1)], (index*9)+5, (index*9)+5);
+                }
+                else if (item == "color") {
+                    vector colors = (vector)llList2String(line,1);
+                    paramsList = llListReplaceList(paramsList, [(float)colors.x], (index*9)+6, (index*9)+6);
+                    paramsList = llListReplaceList(paramsList, [(float)colors.y], (index*9)+7, (index*9)+7);
+                    paramsList = llListReplaceList(paramsList, [(float)colors.z], (index*9)+8, (index*9)+8);
+                }
+/*                else if (item == "red")     {
+                    paramsList = llListReplaceList(paramsList, [(float)llList2String(line, 1)], (index*9)+6, (index*9)+6);
+                }
+                else if (item == "green")   {
+                    paramsList = llListReplaceList(paramsList, [(float)llList2String(line, 1)], (index*9)+7, (index*9)+7);
+                }
+                else if (item == "blue")    {
+                    paramsList = llListReplaceList(paramsList, [(float)llList2String(line, 1)], (index*9)+8, (index*9)+8);
+                }*/
+            }
+        }
+    }
+}
+
+SetParticles(integer linkNum) {
+    key Texture = kTexture;
+    float SizeX = fSizeX;
+    float SizeY = fSizeY;
+    float Gravity = fGravity;
+    float Life = fLife;
+    float Red = fRed;
+    float Green = fGreen;
+    float Blue = fBlue;
+    integer index = llListFindList(paramsList, [llList2String(llGetLinkPrimitiveParams(linkNum, [PRIM_DESC]),0)]);
+    if ((index > -1) || (index == -1 && llListFindList(paramsList, ["*"]) > -1))  {
+        if (index > -1) {}
+        else if (llListFindList(paramsList, ["*"]) > -1) {index = llListFindList(paramsList, ["*"]);}
+        
+        if ((string)llList2Key(paramsList, index + 1) != "") Texture = llList2Key(paramsList, index + 1);
+        if ((string)llList2Float(paramsList, index + 2) != "") SizeX = llList2Float(paramsList, index + 2);
+        if ((string)llList2Float(paramsList, index + 3) != "") SizeY = llList2Float(paramsList, index + 3);
+        if ((string)llList2Float(paramsList, index + 4) != "") Gravity = llList2Float(paramsList, index + 4);
+        if ((string)llList2Float(paramsList, index + 5) != "") Life = llList2Float(paramsList, index + 5);
+        if ((string)llList2Float(paramsList, index + 6) != "") Red = llList2Float(paramsList, index + 6);
+        if ((string)llList2Float(paramsList, index + 7) != "") Green = llList2Float(paramsList, index + 7);
+        if ((string)llList2Float(paramsList, index + 8) != "") Blue = llList2Float(paramsList, index + 8);
+    }
+
+    integer nBitField = PSYS_PART_TARGET_POS_MASK|PSYS_PART_FOLLOW_VELOCITY_MASK;
+    llLinkParticleSystem(linkNum, []);
+    if(fGravity == 0) nBitField = nBitField|PSYS_PART_TARGET_LINEAR_MASK;
+    llLinkParticleSystem(linkNum,
+    [ 
+        PSYS_PART_MAX_AGE, fLife, 
+        PSYS_PART_FLAGS, nBitField, 
+        PSYS_PART_START_COLOR, <Red, Green, Blue>, 
+        PSYS_PART_END_COLOR, <Red, Green, Blue>, 
+        PSYS_PART_START_SCALE, <SizeX, SizeY, 1.00000>, 
+        PSYS_PART_END_SCALE, <SizeX, SizeY, 1.00000>, 
+        PSYS_SRC_PATTERN, 1, 
+        PSYS_SRC_BURST_RATE, 0.000000, 
+        PSYS_SRC_ACCEL, <0.00000, 0.00000, (Gravity*-1)>, 
+        PSYS_SRC_BURST_PART_COUNT, 10, 
+        PSYS_SRC_BURST_RADIUS, 0.000000, 
+        PSYS_SRC_BURST_SPEED_MIN, fMinSpeed, 
+        PSYS_SRC_BURST_SPEED_MAX, fMaxSpeed, 
+        PSYS_SRC_INNERANGLE, 0.000000, 
+        PSYS_SRC_OUTERANGLE, 0.000000, 
+        PSYS_SRC_OMEGA, <0.00000, 0.00000, 0.00000>, 
+        PSYS_SRC_MAX_AGE, 0.000000, 
+        PSYS_PART_START_ALPHA, 1.000000, 
+        PSYS_PART_END_ALPHA, 1.000000, 
+        PSYS_SRC_TARGET_KEY, kTarget, 
+        PSYS_SRC_TEXTURE, Texture 
+    ]);
+}
+
+query_set_chains(list items) {
+    integer itemLength = llGetListLength(items);
+    integer i;
+    for(i=0; i < itemLength; i+=2) {
+        
+        string senderDesc    = llList2String(items, i);
+        integer senderIndex  = llListFindList(gPrimIDs, [senderDesc]);
+        key validSenderKey = (key)llList2String(gPrimIDs, senderIndex + 2);
+        if(validSenderKey) {              //True if we have a key so we've found the sender of the chains so set a flag variable.
             I_Am_Sender = 1;
         }
         
@@ -189,7 +377,7 @@ query_set_chains(list items) {
             // We have the target for the chains now.. 
             if(!I_Am_Dest) I_Am_Dest = 1;
             llSleep(1);
-            string sendText = senderDesc + "," + llList2String(gPrimIDs, targetIndex + 2);
+            string sendText = senderDesc + "~" + llList2String(gPrimIDs, targetIndex + 2);
             llWhisper(-8888, sendText);
         }
     }
@@ -209,7 +397,7 @@ query_rem_chains(list items) {
 executeCommands() {
     while(llGetListLength(gCommandQueue)) {
         integer commandId=llList2Integer(gCommandQueue, 0);
-        list params=llParseStringKeepNulls(llList2String(gCommandQueue, 2), [",",", "], []);
+        list params=llParseStringKeepNulls(llList2String(gCommandQueue, 2), ["~"], []);
         if( commandId == gCMD_REM_CHAINS ) {
             query_rem_chains(params);
         }
@@ -254,7 +442,7 @@ default {
     }
 
     listen(integer channel, string name, key id, string message) {
-        list temp = llParseString2List(message, [",", ", "], []);
+        list temp = llParseString2List(message, ["~"], []);
         string senderCheck = llList2String(temp, 0);
         key destination = (key)llList2String(temp, 1);
         if(channel == -8888 || channel == lmChannel) {
@@ -267,7 +455,7 @@ default {
                 integer numm = (integer)llList2String(temp, 0);
                 temp = llDeleteSubList(temp, 0,0); // remove the command number from the message
                 if(numm == gCMD_REM_CHAINS || numm == gCMD_SET_CHAINS || numm == gCMD_CONFIG) {
-                    gCommandQueue+=[numm, id, llDumpList2String(temp, ",")];
+                    gCommandQueue+=[numm, id, llDumpList2String(temp, "~")];
                     executeCommands();
                 }
             }
@@ -278,4 +466,3 @@ default {
         llResetScript();
     }
 }
-
