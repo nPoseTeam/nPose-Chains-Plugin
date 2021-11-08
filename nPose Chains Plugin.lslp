@@ -11,6 +11,7 @@ float fBlue=1.0;
 
 integer I_Am_Sender;
 integer I_Am_Dest;
+key passKey;
 
 key kTarget;
 key kTexture = "245ea72d-bc79-fee3-a802-8e73c0f09473";
@@ -110,15 +111,6 @@ query_config(list items) {
                     paramsList = llListReplaceList(paramsList, [(float)colors.y], (index*9)+7, (index*9)+7);
                     paramsList = llListReplaceList(paramsList, [(float)colors.z], (index*9)+8, (index*9)+8);
                 }
-/*                else if (item == "red")     {
-                    paramsList = llListReplaceList(paramsList, [(float)llList2String(line, 1)], (index*9)+6, (index*9)+6);
-                }
-                else if (item == "green")   {
-                    paramsList = llListReplaceList(paramsList, [(float)llList2String(line, 1)], (index*9)+7, (index*9)+7);
-                }
-                else if (item == "blue")    {
-                    paramsList = llListReplaceList(paramsList, [(float)llList2String(line, 1)], (index*9)+8, (index*9)+8);
-                }*/
             }
         }
     }
@@ -197,7 +189,11 @@ query_set_chains(list items) {
             if(!I_Am_Dest) I_Am_Dest = 1;
             llSleep(1);
             string sendText = senderDesc + "~" + llList2String(gPrimIDs, targetIndex + 2);
-            llWhisper(-8888, sendText);
+            key primOwnerKey = llList2Key(llGetObjectDetails(llGetLinkKey(1), [OBJECT_OWNER]), 0);
+//        llSay(0, "passKey: " + (string)passKey + ", prim owner: " + (string)llList2Key(llGetObjectDetails(validTargetKey, [OBJECT_OWNER]), 0));
+            if (passKey) {
+                llRegionSayTo(passKey, -8888, sendText);
+            }
         }
     }
 }
@@ -243,9 +239,6 @@ default {
                 }
             }
         }
-//        llMessageLinked(LINK_SET, gPLUGIN_COMMAND_REGISTER, llDumpList2String(["CHAINS_ADD", gCMD_SET_CHAINS, 1, 0], "|"), "");
-//        llMessageLinked(LINK_SET, gPLUGIN_COMMAND_REGISTER, llDumpList2String(["CHAINS_REMOVE", gCMD_REM_CHAINS, 1, 0], "|"), "");
-//        llMessageLinked(LINK_SET, gPLUGIN_COMMAND_REGISTER, llDumpList2String(["CHAINS_CONFIG", gCMD_CONFIG, 1, 0], "|"), "");
         key MyParentId = llList2Key(llGetObjectDetails(llGetKey(), [OBJECT_REZZER_KEY]), 0);
         lmChannel = (integer)("0x7F" + llGetSubString((string)MyParentId, 0, 5));
         if(MyParentId == llGetOwner()) lmChannel = (integer)("0x7F" + llGetSubString((string)llGetKey(), 0, 5));
@@ -258,7 +251,10 @@ default {
 
     link_message(integer sender, integer num, string str, key id) {
         if(num == gCMD_REM_CHAINS || num == gCMD_SET_CHAINS || num == gCMD_CONFIG) {
-            gCommandQueue+=[num, id, str];
+//            llSay(0, "in lm, id: " + (string)id);
+            list params = llParseStringKeepNulls(str, ["|"], []);
+            passKey = llList2String(params, 1);
+            gCommandQueue+=[num, id, llList2String(params, 0)];
             executeCommands();
         }
     }
@@ -271,11 +267,17 @@ default {
             if (llListFindList(gPrimIDs, [senderCheck]) != -1) {
                 integer IDIndex = llListFindList(gPrimIDs, [senderCheck]) + 1;
                 kTarget = destination;
-                SetParticles(llList2Integer(gPrimIDs, IDIndex));
+                key primOwnerKey = llList2Key(llGetObjectDetails(llGetLinkKey(1), [OBJECT_OWNER]), 0);
+//              llSay(0, "passKey: " + (string)passKey + ", prim owner: " + (string)llList2Key(llGetObjectDetails(llGetLinkKey(1), [OBJECT_OWNER]), 0));
+                if (passKey == primOwnerKey) {
+                    SetParticles(llList2Integer(gPrimIDs, IDIndex));
+                }
             }
         }
         else if(channel == gCMD_REM_CHAINS || channel == gCMD_SET_CHAINS || channel == gCMD_CONFIG) {
-                gCommandQueue+=[channel, id, message];
+            list params = llParseStringKeepNulls(message, ["|"], []);
+            passKey = llList2Key(params, 1);
+            gCommandQueue+=[channel, id, llList2String(params, 0)];
                 executeCommands();
         }
     }
